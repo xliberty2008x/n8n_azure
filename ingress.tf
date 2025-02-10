@@ -11,7 +11,7 @@ resource "kubernetes_ingress_v1" "n8n_ingress" {
 
   spec {
     rule {
-      host = "n8n.big-sister.ai"
+      host = "your_host_here"
       http {
         path {
           path      = "/"
@@ -29,7 +29,7 @@ resource "kubernetes_ingress_v1" "n8n_ingress" {
     }
 
     tls {
-      hosts       = ["n8n.big-sister.ai"]
+      hosts       = ["your_host_here"]
       secret_name = "n8n-tls-secret"   # cert-manager will automatically create/update this secret
     }
   }
