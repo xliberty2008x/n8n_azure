@@ -143,7 +143,7 @@ resource "kubernetes_deployment" "n8n_deployment" {
           }
           env {
             name = "N8N_HOST"
-            value = "n8n.big-sister.ai"
+            value = "your_host_here"
           }
           env {
             name = "N8N_SECURE_COOKIE"
@@ -192,7 +192,7 @@ resource "kubernetes_deployment" "n8n_deployment" {
           }
           env {
             name = "WEBHOOK_URL"
-            value = "https://n8n.big-sister.ai"
+            value = "https://your_host"
           }
 
           port {
