@@ -1,0 +1,5 @@
+*.tfvars
+*.terraform
+*.hcl
+*.tfstate
+kubernetes.tf

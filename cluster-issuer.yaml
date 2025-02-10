@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: dubkirill2008@gmail.com
+    privateKeySecretRef:
+      name: n8n-tls-secret
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
