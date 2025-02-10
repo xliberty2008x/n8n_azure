@@ -1,5 +1,5 @@
 resource "azurerm_postgresql_flexible_server" "main" {
-  name                   = "dbovyk-${random_string.aks_temporary_name.result}"
+  name                   = "your_prefix-${random_string.aks_temporary_name.result}"
   resource_group_name    = azurerm_resource_group.main.name
   location               = azurerm_resource_group.main.location
   version                = "16"
