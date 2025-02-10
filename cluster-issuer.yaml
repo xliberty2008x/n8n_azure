@@ -5,7 +5,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: dubkirill2008@gmail.com
+    email: your_email_here
     privateKeySecretRef:
       name: n8n-tls-secret
     solvers:
