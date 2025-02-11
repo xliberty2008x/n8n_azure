@@ -1,27 +1,37 @@
-name: Deploy to AKS
+name: Update AKS Deployment
 
 on:
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight
   push:
     branches:
       - main
 
 jobs:
-  deploy:
+  update-aks:
     runs-on: ubuntu-latest
 
+    environment: n8n_bs
+
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Set up Kubeconfig
+    - name: Set up Azure CLI
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Reconstruct KUBECONFIG
       run: |
-        echo "$KUBECONFIG_CONTENT" | base64 --decode > /tmp/kubeconfig
-        export KUBECONFIG=/tmp/kubeconfig
+        echo "${{ secrets.KUBECONFIG_PART1 }}${{ secrets.KUBECONFIG_PART2 }}${{ secrets.KUBECONFIG_PART3 }}" > $HOME/.kube/config
+        export KUBECONFIG=$HOME/.kube/config
+
+    - name: Pull latest n8n Docker image
+      run: docker pull n8nio/n8n
+
+    - name: Update AKS deployment
+      run: |
+        kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
       env:
-        KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG_CONTENT }}
-
-    - name: Verify Kubernetes context
-      run: kubectl config current-context
-
-    - name: Deploy to AKS
-      run: kubectl apply -f deployment.yaml
+        KUBECONFIG: ${{ secrets.KUBECONFIG }}
