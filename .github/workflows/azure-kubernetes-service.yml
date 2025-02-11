@@ -11,6 +11,8 @@ jobs:
   update-aks:
     runs-on: ubuntu-latest
 
+    environment: n8n_bs
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
