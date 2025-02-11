@@ -21,10 +21,10 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Reconstruct KUBECONFIG
+      - name: Set up kubeconfig
         run: |
           mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG_PART1 }}${{ secrets.KUBECONFIG_PART2 }}${{ secrets.KUBECONFIG_PART3 }}" > $HOME/.kube/config
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
         env:
           KUBECONFIG: $HOME/.kube/config
 
@@ -33,6 +33,6 @@ jobs:
 
       - name: Update AKS deployment
         run: |
-          kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
+          kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest
         env:
           KUBECONFIG: $HOME/.kube/config
