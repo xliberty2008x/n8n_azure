@@ -24,6 +24,7 @@ jobs:
 
     - name: Reconstruct KUBECONFIG
       run: |
+        mkdir -p $HOME/.kube
         echo "${{ secrets.KUBECONFIG_PART1 }}${{ secrets.KUBECONFIG_PART2 }}${{ secrets.KUBECONFIG_PART3 }}" > $HOME/.kube/config
         export KUBECONFIG=$HOME/.kube/config
 
@@ -34,4 +35,4 @@ jobs:
       run: |
         kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
       env:
-        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+        KUBECONFIG: $HOME/.kube/config
