@@ -1,7 +1,7 @@
 name: Upgrade cluster node images
 on:
   schedule:
-    - cron: '0 3 */15 * *'
+    - cron: '0 0 * * *'
 jobs:
   upgrade-node:
     runs-on: ubuntu-latest
