@@ -1,32 +1,16 @@
-name: Update AKS Deployment
-
+name: Upgrade cluster node images
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs daily at midnight
-  push:
-    branches:
-      - main
-
+    - cron: '0 3 */15 * *'
 jobs:
-  update-aks:
+  upgrade-node:
     runs-on: ubuntu-latest
-
-    environment: n8n_bs
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: Set up Azure CLI
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: Pull latest n8n Docker image
-      run: docker pull n8nio/n8n
-
-    - name: Update AKS deployment
-      run: |
-        kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
-      env:
-        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Upgrade node images
+        uses: Azure/cli@v1.0.8
+        with:
+          inlineScript: az aks upgrade --resource-group n8n_bs --name n8nAKScluster --node-image-only --yes
