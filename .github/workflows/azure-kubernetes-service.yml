@@ -1,6 +1,8 @@
 name: Update AKS Deployment
 
 on:
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight
   push:
     branches:
       - main
@@ -9,31 +11,22 @@ jobs:
   update-aks:
     runs-on: ubuntu-latest
 
+    environment: n8n_bs
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Set up Azure CLI
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Set AKS context
-        uses: azure/aks-set-context@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          cluster-name: ${{ secrets.CLUSTER_NAME }}
-          resource-group: ${{ secrets.RESOURCE_GROUP }}
+    - name: Pull latest n8n Docker image
+      run: docker pull n8nio/n8n
 
-      - name: Debug - Show current kubeconfig
-        run: |
-          echo "Current context:"
-          kubectl config current-context
-          echo "Kubeconfig details:"
-          kubectl config view --minify
-
-      - name: Pull latest n8n Docker image
-        run: docker pull n8nio/n8n
-
-      - name: Update AKS deployment image
-        run: kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest
+    - name: Update AKS deployment
+      run: |
+        kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
+      env:
+        KUBECONFIG: ${{ secrets.KUBECONFIG }}
