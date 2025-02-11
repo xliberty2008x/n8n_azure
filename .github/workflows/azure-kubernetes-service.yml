@@ -25,8 +25,15 @@ jobs:
     - name: Pull latest n8n Docker image
       run: docker pull n8nio/n8n
 
+    - name: Set up Kubeconfig
+      run: |
+        echo "$KUBECONFIG_CONTENT" | base64 --decode > /tmp/kubeconfig
+        export KUBECONFIG=/tmp/kubeconfig
+      env:
+        KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG_CONTENT }}
+
     - name: Update AKS deployment
       run: |
         kubectl set image deployment/n8n-deployment n8n=n8nio/n8n:latest --record
       env:
-        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+        KUBECONFIG: /tmp/kubeconfig
