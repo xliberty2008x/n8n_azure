@@ -2,6 +2,8 @@ name: Upgrade cluster node images
 on:
   schedule:
     - cron: '0 0 * * *'
+  workflow_dispatch:  # This allows you to manually trigger the workflow
+
 jobs:
   upgrade-node:
     runs-on: ubuntu-latest
