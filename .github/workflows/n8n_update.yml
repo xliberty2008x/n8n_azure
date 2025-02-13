@@ -1,20 +1,25 @@
-name: Upgrade cluster node images
+name: Upgrade n8n to Next
 
 on:
   schedule:
-    - cron: '59 23 * * 0'
-  workflow_dispatch:
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allows for manual triggering from the GitHub Actions UI
 
 jobs:
-  upgrade-node:
-    environment: n8n_bs
+  upgrade-n8n:
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
         uses: Azure/login@v1.4.6
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - name: Upgrade node images
-        uses: Azure/cli@v1.0.8
-        with:
-          inlineScript: az aks upgrade --resource-group n8n_bs --name n8nAKScluster --node-image-only --yes
+
+      - name: Set kubectl context
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Update n8n deployment image to :next
+        run: |
+          echo "Updating n8n deployment image from :latest to :next"
+          kubectl set image deployment/n8n n8n=n8n:next --record
+          kubectl rollout status deployment/n8n
