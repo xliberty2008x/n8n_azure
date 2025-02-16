@@ -1,8 +1,6 @@
 name: Upgrade n8n to Next
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   workflow_dispatch:  # Allows for manual triggering from the GitHub Actions UI
 
 jobs:
