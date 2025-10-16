@@ -4,19 +4,22 @@ variable "subscription_id" {
 }
 
 variable "client_id" {
-  description = "The client ID for the Azure Service Principal."
+  description = "The client ID for the Azure Service Principal. Not needed when using ARM_USE_CLI=true."
   type        = string
+  default     = ""
 }
 
 variable "client_secret" {
-  description = "The client secret for the Azure Service Principal."
+  description = "The client secret for the Azure Service Principal. Not needed when using ARM_USE_CLI=true."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "tenant_id" {
-  description = "The tenant ID for the Azure account."
+  description = "The tenant ID for the Azure account. Not needed when using ARM_USE_CLI=true."
   type        = string
+  default     = ""
 }
 
 variable "administrator_login" {

@@ -25,52 +25,71 @@ jobs:
         run: |
           az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
 
-      - name: Get Azure Subscription ID
-        id: get-subscription
+      - name: Get Infrastructure Values from Azure
+        id: azure-vars
         run: |
+          # Get subscription ID
           SUBSCRIPTION_ID=$(az account show --query id -o tsv)
           echo "subscription_id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
           echo "Subscription ID: $SUBSCRIPTION_ID"
+
+          # Get PostgreSQL server name and FQDN
+          POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
+          PGHOST=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query fullyQualifiedDomainName -o tsv)
+          echo "pghost=$PGHOST" >> $GITHUB_OUTPUT
+          echo "PostgreSQL Host: $PGHOST"
+
+          # Use standard/sensible values
+          echo "namespace=n8n" >> $GITHUB_OUTPUT
+          echo "postgres_database=n8n" >> $GITHUB_OUTPUT
+          echo "postgres_username=n8nadmin" >> $GITHUB_OUTPUT
+          echo "administrator_login=n8nadmin" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
         run: terraform init
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
-          TF_VAR_subscription_id: ${{ steps.get-subscription.outputs.subscription_id }}
-          TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
-          TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
-          TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
-          TF_VAR_administrator_login: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+          # Fetched from Azure
+          TF_VAR_subscription_id: ${{ steps.azure-vars.outputs.subscription_id }}
+          TF_VAR_namespace: ${{ steps.azure-vars.outputs.namespace }}
+          TF_VAR_postgres_database: ${{ steps.azure-vars.outputs.postgres_database }}
+          TF_VAR_postgres_username: ${{ steps.azure-vars.outputs.postgres_username }}
+          TF_VAR_administrator_login: ${{ steps.azure-vars.outputs.administrator_login }}
+          TF_VAR_PGHOST: ${{ steps.azure-vars.outputs.pghost }}
+          # From secrets (sensitive passwords)
           TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
-          TF_VAR_namespace: ${{ secrets.TF_VAR_NAMESPACE }}
-          TF_VAR_postgres_database: ${{ secrets.TF_VAR_POSTGRES_DATABASE }}
-          TF_VAR_postgres_username: ${{ secrets.TF_VAR_POSTGRES_USERNAME }}
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
-          TF_VAR_PGHOST: ${{ secrets.TF_VAR_PGHOST }}
+          # Not needed with CLI auth (use dummy values)
+          TF_VAR_client_id: "not-needed-with-cli-auth"
+          TF_VAR_client_secret: "not-needed-with-cli-auth"
+          TF_VAR_tenant_id: "not-needed-with-cli-auth"
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
-          TF_VAR_subscription_id: ${{ steps.get-subscription.outputs.subscription_id }}
-          TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
-          TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
-          TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
-          TF_VAR_administrator_login: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+          # Fetched from Azure
+          TF_VAR_subscription_id: ${{ steps.azure-vars.outputs.subscription_id }}
+          TF_VAR_namespace: ${{ steps.azure-vars.outputs.namespace }}
+          TF_VAR_postgres_database: ${{ steps.azure-vars.outputs.postgres_database }}
+          TF_VAR_postgres_username: ${{ steps.azure-vars.outputs.postgres_username }}
+          TF_VAR_administrator_login: ${{ steps.azure-vars.outputs.administrator_login }}
+          TF_VAR_PGHOST: ${{ steps.azure-vars.outputs.pghost }}
+          # From secrets (sensitive passwords)
           TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
-          TF_VAR_namespace: ${{ secrets.TF_VAR_NAMESPACE }}
-          TF_VAR_postgres_database: ${{ secrets.TF_VAR_POSTGRES_DATABASE }}
-          TF_VAR_postgres_username: ${{ secrets.TF_VAR_POSTGRES_USERNAME }}
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
-          TF_VAR_PGHOST: ${{ secrets.TF_VAR_PGHOST }}
+          # Not needed with CLI auth (use dummy values)
+          TF_VAR_client_id: "not-needed-with-cli-auth"
+          TF_VAR_client_secret: "not-needed-with-cli-auth"
+          TF_VAR_tenant_id: "not-needed-with-cli-auth"
 
       - name: Wait for Deployment Rollout
         run: |

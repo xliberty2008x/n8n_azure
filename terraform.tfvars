@@ -1,28 +1,46 @@
-# Copy this file as terraform.tfvars and update the values below with your own credentials and settings.
-
-# Azure credentials configuration
-# subscription_id is provided via environment variable (TF_VAR_subscription_id) in GitHub Actions
-# client_id, client_secret, tenant_id are not needed when using Azure CLI authentication (ARM_USE_CLI=true)
-# Uncomment these lines for local development with service principal:
-# subscription_id = "<YOUR_AZURE_SUBSCRIPTION_ID_HERE>"
-# client_id       = "<YOUR_AZURE_CLIENT_ID_HERE>"
-# client_secret   = "<YOUR_AZURE_CLIENT_SECRET_HERE>"
-# tenant_id       = "<YOUR_AZURE_TENANT_ID_HERE>"            
-
-# PostgreSQL configuration
-administrator_login         = "<YOUR_POSTGRES_ADMIN_LOGIN_HERE>"      
-administrator_login_password = "<YOUR_POSTGRES_ADMIN_PASSWORD_HERE>"   
-postgres_username           = "<YOUR_POSTGRES_USERNAME_HERE>"           
-postgres_password           = "<YOUR_POSTGRES_PASSWORD_HERE>"           
-
-# n8n deployment configuration
-n8n_deployment_and_service_name = "<YOUR_N8N_DEPLOYMENT_AND_SERVICE_NAME_HERE>"  
-namespace                       = "<YOUR_KUBERNETES_NAMESPACE_HERE>"           
-claim0_persistent_volume_name   = "<YOUR_PERSISTENT_VOLUME_CLAIM_NAME_HERE>"     
-postgres_port                   = 5432                                          
-postgres_database               = "<YOUR_POSTGRES_DATABASE_NAME_HERE>"          
-n8n_protocol                    = "<YOUR_N8N_PROTOCOL_HERE>"                    
-n8n_port                        = 5678                                          
-PGHOST                          = "<YOUR_POSTGRES_HOSTNAME_HERE>"                
-service_spec_type               = "<YOUR_SERVICE_SPEC_TYPE_HERE>"                
-
+# terraform.tfvars
+#
+# All variables are provided via environment variables in GitHub Actions workflow.
+# See .github/workflows/apply-python-taskrunner-external.yml for the actual values.
+#
+# The workflow dynamically fetches values from Azure:
+# - subscription_id: from `az account show`
+# - namespace: hardcoded as "n8n"
+# - postgres_database: hardcoded as "n8n"
+# - postgres_username: hardcoded as "n8nadmin"
+# - administrator_login: hardcoded as "n8nadmin"
+# - PGHOST: from `az postgres flexible-server show`
+#
+# Only these require GitHub secrets (sensitive):
+# - administrator_login_password: from secret TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD
+# - postgres_password: from secret TF_VAR_POSTGRES_PASSWORD
+#
+# ============================================================================
+# FOR LOCAL DEVELOPMENT ONLY
+# ============================================================================
+# Uncomment and fill in these values if running Terraform locally:
+#
+# # Azure credentials
+# subscription_id = "your-azure-subscription-id"
+# client_id       = "your-service-principal-client-id"
+# client_secret   = "your-service-principal-client-secret"
+# tenant_id       = "your-azure-tenant-id"
+#
+# # PostgreSQL configuration
+# administrator_login          = "n8nadmin"
+# administrator_login_password = "your-postgres-admin-password"
+# postgres_username            = "n8nadmin"
+# postgres_password            = "your-postgres-user-password"
+# postgres_database            = "n8n"
+# PGHOST                       = "your-postgres-server.postgres.database.azure.com"
+#
+# # Kubernetes configuration
+# namespace = "n8n"
+#
+# # Optional overrides (these have defaults in variables.tf)
+# # n8n_deployment_and_service_name = "n8n"
+# # claim0_persistent_volume_name   = "n8n-claim0"
+# # n8n_protocol                    = "http"
+# # n8n_port                        = "5678"
+# # postgres_port                   = 5432
+# # service_spec_type               = "LoadBalancer"
