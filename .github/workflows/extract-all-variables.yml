@@ -1,0 +1,167 @@
+name: Extract ALL Variables and Save as GitHub Secrets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  secrets: write
+
+jobs:
+  extract-and-save:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+          echo "✅ Connected to AKS cluster"
+
+      - name: Extract Values from Azure
+        id: extract-azure
+        run: |
+          echo "==================== EXTRACTING FROM AZURE ===================="
+
+          # Get subscription ID
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "Subscription ID: $SUBSCRIPTION_ID"
+          echo "subscription_id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
+
+          # Get PostgreSQL server information
+          POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
+          echo "PostgreSQL Server: $POSTGRES_SERVER"
+
+          ADMIN_LOGIN=$(az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name $POSTGRES_SERVER \
+            --query administratorLogin -o tsv)
+          echo "Administrator Login: $ADMIN_LOGIN"
+          echo "administrator_login=$ADMIN_LOGIN" >> $GITHUB_OUTPUT
+
+          PGHOST=$(az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name $POSTGRES_SERVER \
+            --query fullyQualifiedDomainName -o tsv)
+          echo "PostgreSQL Host: $PGHOST"
+          echo "pghost=$PGHOST" >> $GITHUB_OUTPUT
+
+          echo "✅ Azure extraction complete"
+
+      - name: Extract Values from n8n Deployment
+        id: extract-k8s
+        run: |
+          echo "==================== EXTRACTING FROM N8N DEPLOYMENT ===================="
+
+          # Get deployment JSON
+          echo "Fetching n8n deployment configuration..."
+          kubectl get deployment n8n -n n8n -o json > /tmp/n8n-deployment.json
+
+          # Extract namespace
+          NAMESPACE=$(kubectl get deployment n8n -o jsonpath='{.metadata.namespace}')
+          echo "Namespace: $NAMESPACE"
+          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
+
+          # Extract environment variables from deployment
+          POSTGRES_PASSWORD=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value' /tmp/n8n-deployment.json)
+          POSTGRES_USER=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_USER") | .value' /tmp/n8n-deployment.json)
+          POSTGRES_DB=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_DATABASE") | .value' /tmp/n8n-deployment.json)
+
+          echo "Database Name: $POSTGRES_DB"
+          echo "Database User: $POSTGRES_USER"
+          echo "Database Password: *** (hidden)"
+
+          echo "postgres_password=$POSTGRES_PASSWORD" >> $GITHUB_OUTPUT
+          echo "postgres_username=$POSTGRES_USER" >> $GITHUB_OUTPUT
+          echo "postgres_database=$POSTGRES_DB" >> $GITHUB_OUTPUT
+
+          echo "✅ Kubernetes extraction complete"
+
+      - name: Save Variables as GitHub Secrets
+        run: |
+          echo "==================== SAVING TO GITHUB SECRETS ===================="
+
+          # Authenticate with GitHub CLI
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+          # Save each variable as environment secret
+          echo "Saving TF_VAR_subscription_id..."
+          echo "${{ steps.extract-azure.outputs.subscription_id }}" | gh secret set TF_VAR_subscription_id --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_administrator_login..."
+          echo "${{ steps.extract-azure.outputs.administrator_login }}" | gh secret set TF_VAR_administrator_login --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_administrator_login_password..."
+          echo "${{ steps.extract-k8s.outputs.postgres_password }}" | gh secret set TF_VAR_administrator_login_password --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_namespace..."
+          echo "${{ steps.extract-k8s.outputs.namespace }}" | gh secret set TF_VAR_namespace --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_postgres_database..."
+          echo "${{ steps.extract-k8s.outputs.postgres_database }}" | gh secret set TF_VAR_postgres_database --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_postgres_username..."
+          echo "${{ steps.extract-k8s.outputs.postgres_username }}" | gh secret set TF_VAR_postgres_username --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_postgres_password..."
+          echo "${{ steps.extract-k8s.outputs.postgres_password }}" | gh secret set TF_VAR_postgres_password --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_PGHOST..."
+          echo "${{ steps.extract-azure.outputs.pghost }}" | gh secret set TF_VAR_PGHOST --env n8n_bs --repo ${{ github.repository }}
+
+          # Save empty values for client credentials (not needed with CLI auth)
+          echo "Saving TF_VAR_client_id (empty)..."
+          echo "" | gh secret set TF_VAR_client_id --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_client_secret (empty)..."
+          echo "" | gh secret set TF_VAR_client_secret --env n8n_bs --repo ${{ github.repository }}
+
+          echo "Saving TF_VAR_tenant_id (empty)..."
+          echo "" | gh secret set TF_VAR_tenant_id --env n8n_bs --repo ${{ github.repository }}
+
+          echo "✅ All secrets saved successfully!"
+
+      - name: Verify Secrets Were Saved
+        run: |
+          echo "==================== VERIFICATION ===================="
+
+          # List all secrets in the environment (names only)
+          echo "Secrets in environment 'n8n_bs':"
+          gh secret list --env n8n_bs --repo ${{ github.repository }}
+
+          echo ""
+          echo "✅ Verification complete!"
+
+      - name: Display Summary
+        run: |
+          echo "==================== EXTRACTION SUMMARY ===================="
+          echo ""
+          echo "✅ Successfully extracted and saved 11 Terraform variables:"
+          echo ""
+          echo "From Azure:"
+          echo "  - TF_VAR_subscription_id: ${{ steps.extract-azure.outputs.subscription_id }}"
+          echo "  - TF_VAR_administrator_login: ${{ steps.extract-azure.outputs.administrator_login }}"
+          echo "  - TF_VAR_PGHOST: ${{ steps.extract-azure.outputs.pghost }}"
+          echo ""
+          echo "From n8n Deployment:"
+          echo "  - TF_VAR_namespace: ${{ steps.extract-k8s.outputs.namespace }}"
+          echo "  - TF_VAR_postgres_database: ${{ steps.extract-k8s.outputs.postgres_database }}"
+          echo "  - TF_VAR_postgres_username: ${{ steps.extract-k8s.outputs.postgres_username }}"
+          echo "  - TF_VAR_administrator_login_password: *** (hidden)"
+          echo "  - TF_VAR_postgres_password: *** (hidden)"
+          echo ""
+          echo "Default/Empty values:"
+          echo "  - TF_VAR_client_id: (empty - not needed with CLI auth)"
+          echo "  - TF_VAR_client_secret: (empty - not needed with CLI auth)"
+          echo "  - TF_VAR_tenant_id: (empty - not needed with CLI auth)"
+          echo ""
+          echo "==================== NEXT STEPS ===================="
+          echo ""
+          echo "All required variables are now saved as GitHub secrets!"
+          echo "You can now run the 'Apply Python Task Runner - External Mode' workflow."
+          echo ""
+          echo "The workflow will use these saved secrets automatically."
