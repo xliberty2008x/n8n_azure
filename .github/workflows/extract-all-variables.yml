@@ -56,24 +56,67 @@ jobs:
         run: |
           echo "==================== EXTRACTING FROM N8N DEPLOYMENT ===================="
 
-          # Get deployment JSON
-          echo "Fetching n8n deployment configuration..."
-          kubectl get deployment n8n -n n8n -o json > /tmp/n8n-deployment.json
+          # First, find the n8n deployment in any namespace
+          echo "Searching for n8n deployment across all namespaces..."
+          DEPLOYMENT_INFO=$(kubectl get deployments --all-namespaces -l app=n8n -o json 2>/dev/null || kubectl get deployments --all-namespaces --field-selector metadata.name=n8n -o json 2>/dev/null || echo '{"items":[]}')
 
-          # Extract namespace
-          NAMESPACE=$(kubectl get deployment n8n -o jsonpath='{.metadata.namespace}')
+          # Check if we found any deployment
+          DEPLOYMENT_COUNT=$(echo "$DEPLOYMENT_INFO" | jq '.items | length')
+
+          if [ "$DEPLOYMENT_COUNT" -eq 0 ]; then
+            echo "⚠️  No n8n deployment found. Searching by pod name..."
+            # Try to find n8n pod
+            POD_INFO=$(kubectl get pods --all-namespaces --field-selector status.phase=Running -o json | jq '.items[] | select(.metadata.name | contains("n8n"))')
+
+            if [ -z "$POD_INFO" ]; then
+              echo "❌ No running n8n deployment or pod found!"
+              echo "This might be the first deployment. Using default values."
+
+              # Use defaults
+              NAMESPACE="n8n"
+              POSTGRES_DB="n8n"
+              POSTGRES_USER="psqladminun"
+              POSTGRES_PASSWORD="TEMP_PASSWORD_NEEDS_MANUAL_SET"
+
+              echo "⚠️  Using default values - you may need to set TF_VAR_postgres_password manually"
+            else
+              # Extract from pod
+              NAMESPACE=$(echo "$POD_INFO" | jq -r '.metadata.namespace')
+              echo "Found n8n pod in namespace: $NAMESPACE"
+
+              POD_NAME=$(echo "$POD_INFO" | jq -r '.metadata.name')
+
+              # Get deployment from pod's namespace
+              kubectl get deployment -n "$NAMESPACE" -o json > /tmp/n8n-deployment.json
+
+              # Extract environment variables
+              POSTGRES_PASSWORD=$(jq -r '.items[0].spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value' /tmp/n8n-deployment.json)
+              POSTGRES_USER=$(jq -r '.items[0].spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_USER") | .value' /tmp/n8n-deployment.json)
+              POSTGRES_DB=$(jq -r '.items[0].spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_DATABASE") | .value' /tmp/n8n-deployment.json)
+            fi
+          else
+            # Found deployment(s)
+            echo "Found $DEPLOYMENT_COUNT n8n deployment(s)"
+
+            # Get first deployment
+            NAMESPACE=$(echo "$DEPLOYMENT_INFO" | jq -r '.items[0].metadata.namespace')
+            echo "Using deployment in namespace: $NAMESPACE"
+
+            # Save deployment JSON
+            echo "$DEPLOYMENT_INFO" | jq '.items[0]' > /tmp/n8n-deployment.json
+
+            # Extract environment variables from deployment
+            POSTGRES_PASSWORD=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value' /tmp/n8n-deployment.json)
+            POSTGRES_USER=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_USER") | .value' /tmp/n8n-deployment.json)
+            POSTGRES_DB=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_DATABASE") | .value' /tmp/n8n-deployment.json)
+          fi
+
           echo "Namespace: $NAMESPACE"
-          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
-
-          # Extract environment variables from deployment
-          POSTGRES_PASSWORD=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value' /tmp/n8n-deployment.json)
-          POSTGRES_USER=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_USER") | .value' /tmp/n8n-deployment.json)
-          POSTGRES_DB=$(jq -r '.spec.template.spec.containers[0].env[] | select(.name=="DB_POSTGRESDB_DATABASE") | .value' /tmp/n8n-deployment.json)
-
           echo "Database Name: $POSTGRES_DB"
           echo "Database User: $POSTGRES_USER"
           echo "Database Password: *** (hidden)"
 
+          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
           echo "postgres_password=$POSTGRES_PASSWORD" >> $GITHUB_OUTPUT
           echo "postgres_username=$POSTGRES_USER" >> $GITHUB_OUTPUT
           echo "postgres_database=$POSTGRES_DB" >> $GITHUB_OUTPUT
