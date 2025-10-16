@@ -194,6 +194,31 @@ resource "kubernetes_deployment" "n8n_deployment" {
             name = "WEBHOOK_URL"
             value = "https://your_host"
           }
+          # Python Task Runner Configuration
+          env {
+            name  = "N8N_RUNNERS_ENABLED"
+            value = "true"
+          }
+          env {
+            name  = "N8N_RUNNERS_MODE"
+            value = "internal"
+          }
+          env {
+            name  = "N8N_NATIVE_PYTHON_RUNNER"
+            value = "true"
+          }
+          env {
+            name  = "N8N_RUNNERS_STDLIB_ALLOW"
+            value = "os,sys,json,re,datetime,math,time,random,hashlib,base64,collections,itertools"
+          }
+          env {
+            name  = "N8N_RUNNERS_EXTERNAL_ALLOW"
+            value = "pandas,numpy,requests,beautifulsoup4,lxml,openpyxl,pypdf,pillow,python-dateutil,pytz"
+          }
+          env {
+            name  = "NODE_FUNCTION_ALLOW_BUILTIN"
+            value = "*"
+          }
 
           port {
             container_port = var.n8n_port
@@ -201,10 +226,10 @@ resource "kubernetes_deployment" "n8n_deployment" {
 
           resources {
             requests = {
-              memory = "250Mi"
+              memory = "512Mi"
             }
             limits = {
-              memory = "500Mi"
+              memory = "1Gi"
             }
           }
 

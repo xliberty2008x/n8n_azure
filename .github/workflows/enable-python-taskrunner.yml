@@ -1,0 +1,72 @@
+name: Enable Python Task Runner (One-Time)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  enable-python-runner:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set kubectl context for the AKS cluster
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Add Python Task Runner Environment Variables
+        run: |
+          echo "Adding Python task runner environment variables to n8n deployment..."
+          kubectl set env deployment/n8n -n n8n \
+            N8N_RUNNERS_ENABLED=true \
+            N8N_RUNNERS_MODE=internal \
+            N8N_NATIVE_PYTHON_RUNNER=true \
+            N8N_RUNNERS_STDLIB_ALLOW=os,sys,json,re,datetime,math,time,random,hashlib,base64,collections,itertools \
+            N8N_RUNNERS_EXTERNAL_ALLOW=pandas,numpy,requests,beautifulsoup4,lxml,openpyxl,pypdf,pillow,python-dateutil,pytz \
+            NODE_FUNCTION_ALLOW_BUILTIN=*
+
+          echo "Environment variables added successfully"
+
+      - name: Increase Pod Memory Limits
+        run: |
+          echo "Updating memory limits for n8n deployment..."
+          kubectl set resources deployment/n8n -n n8n \
+            --requests=memory=512Mi \
+            --limits=memory=1Gi
+
+          echo "Memory limits updated: 512Mi request, 1Gi limit"
+
+      - name: Restart n8n Deployment
+        run: |
+          echo "Restarting n8n deployment to apply changes..."
+          kubectl rollout restart deployment/n8n -n n8n
+
+      - name: Wait for Rollout to Complete
+        run: |
+          echo "Waiting for deployment rollout to complete..."
+          kubectl rollout status deployment/n8n -n n8n --timeout=5m
+
+      - name: Verify Deployment Status
+        run: |
+          echo "Checking pod status..."
+          kubectl get pods -n n8n -l service=n8n
+
+          echo ""
+          echo "Checking deployment details..."
+          kubectl describe deployment n8n -n n8n | grep -A 10 "Environment:"
+
+          echo ""
+          echo "✅ Python Task Runner enabled successfully!"
+          echo ""
+          echo "Next steps:"
+          echo "1. Access your n8n instance"
+          echo "2. Create or edit a Code node"
+          echo "3. Look for 'Python (Native) (Beta)' in the language dropdown"
+          echo "4. Test Python code with imports like: import pandas as pd"
+          echo ""
+          echo "Available Python packages:"
+          echo "  - pandas, numpy, requests, beautifulsoup4, lxml"
+          echo "  - openpyxl, pypdf, pillow, python-dateutil, pytz"
