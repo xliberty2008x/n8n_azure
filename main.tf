@@ -6,6 +6,15 @@ terraform {
       version = "~> 4.17.0"
     }
   }
+
+  # Remote backend for state persistence across GitHub Actions workflows
+  # The storage account is created by the "Setup Terraform Backend Storage" workflow
+  backend "azurerm" {
+    resource_group_name  = "n8n_bs"
+    storage_account_name = ""  # Set via ARM_BACKEND_STORAGE_ACCOUNT env var
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+  }
 }
 
 

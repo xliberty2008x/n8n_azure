@@ -1,0 +1,115 @@
+name: Setup Terraform Backend Storage (One-Time)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-backend:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Storage Account for Terraform State
+        run: |
+          echo "==================== CREATING TERRAFORM BACKEND ===================="
+
+          # Generate unique storage account name (must be globally unique, 3-24 chars, lowercase alphanumeric)
+          RANDOM_SUFFIX=$(openssl rand -hex 4)
+          STORAGE_ACCOUNT_NAME="n8ntfstate${RANDOM_SUFFIX}"
+
+          echo "Storage Account Name: $STORAGE_ACCOUNT_NAME"
+
+          # Check if storage account already exists
+          if az storage account show --name "$STORAGE_ACCOUNT_NAME" --resource-group n8n_bs &>/dev/null; then
+            echo "✅ Storage account $STORAGE_ACCOUNT_NAME already exists"
+          else
+            echo "Creating storage account..."
+            az storage account create \
+              --name "$STORAGE_ACCOUNT_NAME" \
+              --resource-group n8n_bs \
+              --location "East US 2" \
+              --sku Standard_LRS \
+              --kind StorageV2 \
+              --min-tls-version TLS1_2 \
+              --allow-blob-public-access false
+
+            echo "✅ Storage account created"
+          fi
+
+          # Get storage account key
+          STORAGE_ACCOUNT_KEY=$(az storage account keys list \
+            --resource-group n8n_bs \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --query '[0].value' -o tsv)
+
+          echo "✅ Storage account key retrieved"
+
+          # Create container for Terraform state
+          echo "Creating blob container 'tfstate'..."
+          az storage container create \
+            --name tfstate \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --account-key "$STORAGE_ACCOUNT_KEY" \
+            --auth-mode key || echo "Container may already exist"
+
+          echo "✅ Blob container 'tfstate' ready"
+
+          echo ""
+          echo "==================== SETUP COMPLETE ===================="
+          echo ""
+          echo "Storage Account Name: $STORAGE_ACCOUNT_NAME"
+          echo "Container Name: tfstate"
+          echo "Resource Group: n8n_bs"
+          echo ""
+          echo "⚠️  IMPORTANT: Save these as GitHub secrets:"
+          echo ""
+          echo "1. Set TERRAFORM_BACKEND_STORAGE_ACCOUNT secret:"
+          echo "   gh secret set TERRAFORM_BACKEND_STORAGE_ACCOUNT --env n8n_bs --body \"$STORAGE_ACCOUNT_NAME\""
+          echo ""
+          echo "2. Set TERRAFORM_BACKEND_ACCESS_KEY secret:"
+          echo "   gh secret set TERRAFORM_BACKEND_ACCESS_KEY --env n8n_bs --body \"$STORAGE_ACCOUNT_KEY\""
+          echo ""
+          echo "After setting these secrets, you can run:"
+          echo "  1. Import Existing Resources to Terraform State"
+          echo "  2. Apply Python Task Runner - External Mode"
+          echo ""
+          echo "The state will persist between workflow runs! 🎉"
+
+      - name: Install GitHub CLI
+        run: |
+          type gh &>/dev/null || (curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y)
+
+      - name: Automatically Set GitHub Secrets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "==================== SETTING GITHUB SECRETS ===================="
+
+          # Get storage account name and key again
+          STORAGE_ACCOUNT_NAME=$(az storage account list --resource-group n8n_bs --query "[?starts_with(name, 'n8ntfstate')].name" -o tsv | head -n1)
+          STORAGE_ACCOUNT_KEY=$(az storage account keys list \
+            --resource-group n8n_bs \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --query '[0].value' -o tsv)
+
+          # Set secrets using gh CLI
+          echo "$STORAGE_ACCOUNT_NAME" | gh secret set TERRAFORM_BACKEND_STORAGE_ACCOUNT --env n8n_bs
+          echo "✅ Set TERRAFORM_BACKEND_STORAGE_ACCOUNT"
+
+          echo "$STORAGE_ACCOUNT_KEY" | gh secret set TERRAFORM_BACKEND_ACCESS_KEY --env n8n_bs
+          echo "✅ Set TERRAFORM_BACKEND_ACCESS_KEY"
+
+          echo ""
+          echo "✅ GitHub secrets configured automatically!"
+          echo ""
+          echo "You can now run:"
+          echo "  1. Import Existing Resources to Terraform State"
+          echo "  2. Apply Python Task Runner - External Mode"
