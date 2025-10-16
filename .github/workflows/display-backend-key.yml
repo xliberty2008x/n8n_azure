@@ -5,6 +5,7 @@ on:
 
 jobs:
   display-key:
+    environment: n8n_bs
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
