@@ -36,14 +36,38 @@ jobs:
           # Get PostgreSQL server name and FQDN
           POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
           PGHOST=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query fullyQualifiedDomainName -o tsv)
+          ADMIN_USER=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query administratorLogin -o tsv)
+
           echo "pghost=$PGHOST" >> $GITHUB_OUTPUT
           echo "PostgreSQL Host: $PGHOST"
+          echo "PostgreSQL Admin: $ADMIN_USER"
+
+          # Generate or use password (check if secret exists, otherwise generate)
+          if [ -z "${{ secrets.TF_VAR_POSTGRES_PASSWORD }}" ]; then
+            echo "⚠️  No password secret found, generating new password..."
+            POSTGRES_PWD=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
+            echo "postgres_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+            echo "administrator_login_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+
+            # Update PostgreSQL password in Azure
+            echo "Updating PostgreSQL password in Azure..."
+            az postgres flexible-server update \
+              --resource-group n8n_bs \
+              --name $POSTGRES_SERVER \
+              --admin-password "$POSTGRES_PWD" \
+              --output none
+            echo "✅ Password updated in Azure"
+          else
+            echo "✅ Using password from GitHub secrets"
+            echo "postgres_password=${{ secrets.TF_VAR_POSTGRES_PASSWORD }}" >> $GITHUB_OUTPUT
+            echo "administrator_login_password=${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}" >> $GITHUB_OUTPUT
+          fi
 
           # Use standard/sensible values
           echo "namespace=n8n" >> $GITHUB_OUTPUT
           echo "postgres_database=n8n" >> $GITHUB_OUTPUT
-          echo "postgres_username=n8nadmin" >> $GITHUB_OUTPUT
-          echo "administrator_login=n8nadmin" >> $GITHUB_OUTPUT
+          echo "postgres_username=$ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "administrator_login=$ADMIN_USER" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
         run: terraform init
@@ -63,9 +87,9 @@ jobs:
           TF_VAR_postgres_username: ${{ steps.azure-vars.outputs.postgres_username }}
           TF_VAR_administrator_login: ${{ steps.azure-vars.outputs.administrator_login }}
           TF_VAR_PGHOST: ${{ steps.azure-vars.outputs.pghost }}
-          # From secrets (sensitive passwords)
-          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
-          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+          # Passwords (from secrets if available, otherwise generated)
+          TF_VAR_administrator_login_password: ${{ steps.azure-vars.outputs.administrator_login_password }}
+          TF_VAR_postgres_password: ${{ steps.azure-vars.outputs.postgres_password }}
           # Not needed with CLI auth (use dummy values)
           TF_VAR_client_id: "not-needed-with-cli-auth"
           TF_VAR_client_secret: "not-needed-with-cli-auth"
@@ -83,9 +107,9 @@ jobs:
           TF_VAR_postgres_username: ${{ steps.azure-vars.outputs.postgres_username }}
           TF_VAR_administrator_login: ${{ steps.azure-vars.outputs.administrator_login }}
           TF_VAR_PGHOST: ${{ steps.azure-vars.outputs.pghost }}
-          # From secrets (sensitive passwords)
-          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
-          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+          # Passwords (from secrets if available, otherwise generated)
+          TF_VAR_administrator_login_password: ${{ steps.azure-vars.outputs.administrator_login_password }}
+          TF_VAR_postgres_password: ${{ steps.azure-vars.outputs.postgres_password }}
           # Not needed with CLI auth (use dummy values)
           TF_VAR_client_id: "not-needed-with-cli-auth"
           TF_VAR_client_secret: "not-needed-with-cli-auth"
