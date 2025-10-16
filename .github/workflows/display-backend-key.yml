@@ -1,0 +1,45 @@
+name: Display Backend Storage Key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  display-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Display Storage Account Info
+        run: |
+          echo "==================== TERRAFORM BACKEND INFO ===================="
+          echo ""
+
+          STORAGE_ACCOUNT_NAME="n8ntfstate959002e9"
+
+          echo "Storage Account Name: $STORAGE_ACCOUNT_NAME"
+          echo "Container Name: tfstate"
+          echo "Resource Group: n8n_bs"
+          echo ""
+
+          # Get and display the access key
+          STORAGE_ACCOUNT_KEY=$(az storage account keys list \
+            --resource-group n8n_bs \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --query '[0].value' -o tsv)
+
+          echo "==================== COPY THESE VALUES ===================="
+          echo ""
+          echo "Add these as GitHub secrets in: Settings → Environments → n8n_bs"
+          echo ""
+          echo "Secret 1:"
+          echo "  Name: TERRAFORM_BACKEND_STORAGE_ACCOUNT"
+          echo "  Value: $STORAGE_ACCOUNT_NAME"
+          echo ""
+          echo "Secret 2:"
+          echo "  Name: TERRAFORM_BACKEND_ACCESS_KEY"
+          echo "  Value: $STORAGE_ACCOUNT_KEY"
+          echo ""
+          echo "================================================================"
