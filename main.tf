@@ -20,9 +20,10 @@ provider "kubernetes" {
 
 provider "azurerm" {
   features {}
-  # When running in GitHub Actions with ARM_USE_CLI=true, comment out explicit credentials
-  # When running locally, uncomment these lines:
-  # subscription_id = var.subscription_id
+  # subscription_id is required even with CLI auth
+  subscription_id = var.subscription_id
+  # When using ARM_USE_CLI=true (GitHub Actions), do not set client credentials
+  # When running locally with service principal, uncomment these lines:
   # client_id       = var.client_id
   # client_secret   = var.client_secret
   # tenant_id       = var.tenant_id
