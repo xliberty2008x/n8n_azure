@@ -1,0 +1,73 @@
+name: Check PostgreSQL Backups
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-backups:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check if PostgreSQL Server Still Exists
+        run: |
+          echo "==================== CHECKING POSTGRESQL SERVER ===================="
+
+          if az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name dbovyk-z4f34nt2 &>/dev/null; then
+
+            echo "✅ PostgreSQL Server still exists"
+            echo ""
+
+            # Show server details
+            az postgres flexible-server show \
+              --resource-group n8n_bs \
+              --name dbovyk-z4f34nt2 \
+              --query "{Name:name, State:state, BackupRetentionDays:backup.backupRetentionDays, EarliestRestoreDate:backup.earliestRestoreDate}" -o table
+
+          else
+            echo "❌ PostgreSQL Server was also deleted"
+            echo "Cannot restore database without the server"
+            exit 1
+          fi
+
+      - name: List Available Backups
+        run: |
+          echo ""
+          echo "==================== CHECKING BACKUPS ===================="
+
+          # Check backup configuration
+          echo "Backup configuration:"
+          az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name dbovyk-z4f34nt2 \
+            --query "backup" -o json
+
+          echo ""
+          echo "==================== RESTORE OPTIONS ===================="
+          echo ""
+          echo "If the server still exists, we can restore the database using:"
+          echo "1. Point-in-time restore (PITR) - restore to any point within retention period"
+          echo "2. The earliest restore date is shown above"
+          echo ""
+          echo "To restore, we need to know:"
+          echo "  - When was the database deleted? (from the workflow logs)"
+          echo "  - We can restore to a few minutes before that time"
+
+      - name: List Current Databases
+        run: |
+          echo ""
+          echo "==================== CURRENT DATABASES ===================="
+
+          az postgres flexible-server db list \
+            --resource-group n8n_bs \
+            --server-name dbovyk-z4f34nt2 \
+            --query "[].name" -o table
+
+          echo ""
+          echo "If 'n8n' database is missing, we can restore it from backup."

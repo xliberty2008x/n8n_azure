@@ -1,0 +1,83 @@
+name: Restore PostgreSQL Database from Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_time:
+        description: 'Restore to this timestamp (format: 2025-01-16T12:30:00Z - use UTC time BEFORE database was deleted)'
+        required: true
+        type: string
+
+jobs:
+  restore-database:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate Restore Time
+        run: |
+          echo "==================== RESTORE PARAMETERS ===================="
+          echo "Restore time: ${{ inputs.restore_time }}"
+          echo ""
+          echo "⚠️  IMPORTANT:"
+          echo "  - Time must be in UTC format: YYYY-MM-DDTHH:MM:SSZ"
+          echo "  - Time must be BEFORE the database was deleted"
+          echo "  - Time must be within the backup retention period (7 days)"
+          echo ""
+
+      - name: Check Server Exists
+        run: |
+          if ! az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name dbovyk-z4f34nt2 &>/dev/null; then
+            echo "❌ PostgreSQL Server does not exist - cannot restore"
+            exit 1
+          fi
+          echo "✅ PostgreSQL Server exists"
+
+      - name: Perform Point-in-Time Restore
+        run: |
+          echo "==================== RESTORING DATABASE ===================="
+          echo ""
+          echo "Creating new temporary server from backup..."
+          echo "This will restore the entire server to the specified point in time."
+          echo ""
+
+          # Create a restored server with a temporary name
+          TEMP_SERVER_NAME="dbovyk-z4f34nt2-restored-$(date +%s)"
+
+          az postgres flexible-server restore \
+            --resource-group n8n_bs \
+            --name "$TEMP_SERVER_NAME" \
+            --source-server dbovyk-z4f34nt2 \
+            --restore-time "${{ inputs.restore_time }}"
+
+          echo ""
+          echo "✅ Restored server created: $TEMP_SERVER_NAME"
+          echo ""
+          echo "Next steps:"
+          echo "1. The n8n database should exist in the restored server"
+          echo "2. You can dump the database from the restored server"
+          echo "3. Recreate the 'n8n' database in the original server"
+          echo "4. Restore the dump to the original server"
+          echo "5. Delete the temporary restored server"
+
+      - name: Alternative - Recreate Database and Accept Data Loss
+        if: failure()
+        run: |
+          echo ""
+          echo "==================== ALTERNATIVE: RECREATE EMPTY DATABASE ===================="
+          echo ""
+          echo "If point-in-time restore fails, you can recreate an empty database:"
+          echo ""
+          echo "  az postgres flexible-server db create \\"
+          echo "    --resource-group n8n_bs \\"
+          echo "    --server-name dbovyk-z4f34nt2 \\"
+          echo "    --database-name n8n"
+          echo ""
+          echo "⚠️  This will create an EMPTY database - all previous data will be lost."
+          echo "n8n will start fresh with no workflows, credentials, or history."
