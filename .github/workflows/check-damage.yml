@@ -1,0 +1,96 @@
+name: Check Infrastructure Status After Cancellation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-damage:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check PostgreSQL Server Status
+        run: |
+          echo "==================== CHECKING POSTGRESQL SERVER ===================="
+
+          if az postgres flexible-server show \
+            --resource-group n8n_bs \
+            --name dbovyk-z4f34nt2 &>/dev/null; then
+
+            echo "✅ PostgreSQL Server STILL EXISTS"
+
+            az postgres flexible-server show \
+              --resource-group n8n_bs \
+              --name dbovyk-z4f34nt2 \
+              --query "{Name:name, State:state, Version:version, Location:location}" -o table
+          else
+            echo "❌ PostgreSQL Server was DELETED"
+          fi
+          echo ""
+
+      - name: Check PostgreSQL Database Status
+        run: |
+          echo "==================== CHECKING POSTGRESQL DATABASE ===================="
+
+          if az postgres flexible-server db show \
+            --resource-group n8n_bs \
+            --server-name dbovyk-z4f34nt2 \
+            --database-name n8n &>/dev/null; then
+
+            echo "✅ PostgreSQL Database 'n8n' STILL EXISTS"
+          else
+            echo "❌ PostgreSQL Database 'n8n' was DELETED"
+          fi
+          echo ""
+
+      - name: Check AKS Cluster Status
+        run: |
+          echo "==================== CHECKING AKS CLUSTER ===================="
+
+          if az aks show \
+            --resource-group n8n_bs \
+            --name n8nAKScluster &>/dev/null; then
+
+            echo "✅ AKS Cluster STILL EXISTS"
+
+            az aks show \
+              --resource-group n8n_bs \
+              --name n8nAKScluster \
+              --query "{Name:name, Status:provisioningState, K8sVersion:kubernetesVersion}" -o table
+          else
+            echo "❌ AKS Cluster was DELETED"
+          fi
+          echo ""
+
+      - name: Check n8n Pod Status
+        run: |
+          echo "==================== CHECKING N8N POD ===================="
+
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing || true
+
+          POD_STATUS=$(kubectl get pods --all-namespaces | grep n8n || echo "No n8n pods found")
+
+          if [ "$POD_STATUS" != "No n8n pods found" ]; then
+            echo "✅ n8n Pod(s) STILL RUNNING"
+            kubectl get pods --all-namespaces | grep n8n
+          else
+            echo "⚠️  No n8n pods found (may have been deleted or not yet recreated)"
+          fi
+          echo ""
+
+      - name: Summary
+        run: |
+          echo "==================== SUMMARY ===================="
+          echo ""
+          echo "Run the workflows above to see if your infrastructure is intact."
+          echo ""
+          echo "If PostgreSQL was deleted, you will need to restore from backup."
+          echo "If it still exists, we need to:"
+          echo "  1. Fix the Terraform configuration to match actual resources"
+          echo "  2. Add lifecycle prevent_destroy to critical resources"
+          echo "  3. Run terraform plan (NOT apply) to verify changes"
+          echo "  4. Only then carefully apply with -target flags for specific resources"
