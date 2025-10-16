@@ -28,10 +28,12 @@ jobs:
       - name: Get Infrastructure Values from Azure
         id: azure-vars
         run: |
+          echo "==================== EXTRACTING FROM AZURE ===================="
+
           # Get subscription ID
           SUBSCRIPTION_ID=$(az account show --query id -o tsv)
           echo "subscription_id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
-          echo "Subscription ID: $SUBSCRIPTION_ID"
+          echo "Subscription ID extracted ✅"
 
           # Get PostgreSQL server name and FQDN
           POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
@@ -42,32 +44,42 @@ jobs:
           echo "PostgreSQL Host: $PGHOST"
           echo "PostgreSQL Admin: $ADMIN_USER"
 
-          # Generate or use password (check if secret exists, otherwise generate)
-          if [ -z "${{ secrets.TF_VAR_POSTGRES_PASSWORD }}" ]; then
-            echo "⚠️  No password secret found, generating new password..."
-            POSTGRES_PWD=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
-            echo "postgres_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
-            echo "administrator_login_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+          echo "administrator_login=$ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "postgres_username=$ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "postgres_database=n8n" >> $GITHUB_OUTPUT
 
-            # Update PostgreSQL password in Azure
-            echo "Updating PostgreSQL password in Azure..."
-            az postgres flexible-server update \
-              --resource-group n8n_bs \
-              --name $POSTGRES_SERVER \
-              --admin-password "$POSTGRES_PWD" \
-              --output none
-            echo "✅ Password updated in Azure"
-          else
-            echo "✅ Using password from GitHub secrets"
-            echo "postgres_password=${{ secrets.TF_VAR_POSTGRES_PASSWORD }}" >> $GITHUB_OUTPUT
-            echo "administrator_login_password=${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}" >> $GITHUB_OUTPUT
+          echo "==================== EXTRACTING FROM N8N DEPLOYMENT ===================="
+
+          # Find n8n pod across all namespaces
+          echo "Searching for running n8n pod..."
+          POD_INFO=$(kubectl get pods --all-namespaces --field-selector status.phase=Running -o json | jq -r '.items[] | select(.metadata.name | contains("n8n")) | "\(.metadata.namespace) \(.metadata.name)"' | head -n1)
+
+          if [ -z "$POD_INFO" ]; then
+            echo "❌ ERROR: No running n8n pod found!"
+            exit 1
           fi
 
-          # Use standard/sensible values
-          echo "namespace=n8n" >> $GITHUB_OUTPUT
-          echo "postgres_database=n8n" >> $GITHUB_OUTPUT
-          echo "postgres_username=$ADMIN_USER" >> $GITHUB_OUTPUT
-          echo "administrator_login=$ADMIN_USER" >> $GITHUB_OUTPUT
+          NAMESPACE=$(echo "$POD_INFO" | awk '{print $1}')
+          POD_NAME=$(echo "$POD_INFO" | awk '{print $2}')
+
+          echo "Found n8n pod: $POD_NAME in namespace: $NAMESPACE"
+          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
+
+          # Extract password from running n8n container
+          echo "Extracting database password from running n8n deployment..."
+          POSTGRES_PWD=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o json | jq -r '.spec.containers[] | select(.name=="n8n") | .env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value')
+
+          if [ -z "$POSTGRES_PWD" ]; then
+            echo "❌ ERROR: Could not extract database password from n8n pod!"
+            exit 1
+          fi
+
+          echo "postgres_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+          echo "administrator_login_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+          echo "Database password extracted ✅"
+
+          echo ""
+          echo "✅ All values extracted successfully from existing infrastructure"
 
       - name: Terraform Init
         run: terraform init
@@ -118,34 +130,34 @@ jobs:
       - name: Wait for Deployment Rollout
         run: |
           echo "Waiting for n8n deployment to complete rollout..."
-          kubectl rollout status deployment/n8n -n ${{ secrets.TF_VAR_NAMESPACE }} --timeout=5m
+          kubectl rollout status deployment/n8n -n ${{ steps.azure-vars.outputs.namespace }} --timeout=5m
 
       - name: Verify Both Containers are Running
         run: |
           echo "==================== POD STATUS ===================="
-          kubectl get pods -n ${{ secrets.TF_VAR_NAMESPACE }} -o wide
+          kubectl get pods -n ${{ steps.azure-vars.outputs.namespace }} -o wide
           echo ""
 
           echo "==================== CONTAINER STATUS ===================="
-          kubectl get pods -n ${{ secrets.TF_VAR_NAMESPACE }} -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .status.containerStatuses[*]}{"\t"}{.name}{": "}{.ready}{"\n"}{end}{end}'
+          kubectl get pods -n ${{ steps.azure-vars.outputs.namespace }} -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .status.containerStatuses[*]}{"\t"}{.name}{": "}{.ready}{"\n"}{end}{end}'
           echo ""
 
       - name: Check n8n Logs
         run: |
           echo "==================== N8N LOGS (Last 30 lines) ===================="
-          kubectl logs -n ${{ secrets.TF_VAR_NAMESPACE }} deployment/n8n -c n8n --tail=30
+          kubectl logs -n ${{ steps.azure-vars.outputs.namespace }} deployment/n8n -c n8n --tail=30
           echo ""
 
       - name: Check Runner Logs
         run: |
           echo "==================== RUNNER LOGS (Last 30 lines) ===================="
-          kubectl logs -n ${{ secrets.TF_VAR_NAMESPACE }} deployment/n8n -c n8n-runner --tail=30
+          kubectl logs -n ${{ steps.azure-vars.outputs.namespace }} deployment/n8n -c n8n-runner --tail=30
           echo ""
 
       - name: Verify Service
         run: |
           echo "==================== SERVICE STATUS ===================="
-          kubectl get svc -n ${{ secrets.TF_VAR_NAMESPACE }}
+          kubectl get svc -n ${{ steps.azure-vars.outputs.namespace }}
           echo ""
 
           echo "✅ Python Task Runner in External Mode deployed successfully!"
