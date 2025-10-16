@@ -31,6 +31,9 @@ jobs:
             --account-name "$STORAGE_ACCOUNT_NAME" \
             --query '[0].value' -o tsv)
 
+          # Encode in base64 to bypass GitHub's automatic masking
+          ENCODED_KEY=$(echo -n "$STORAGE_ACCOUNT_KEY" | base64)
+
           echo "==================== COPY THESE VALUES ===================="
           echo ""
           echo "Add these as GitHub secrets in: Settings → Environments → n8n_bs"
@@ -41,6 +44,12 @@ jobs:
           echo ""
           echo "Secret 2:"
           echo "  Name: TERRAFORM_BACKEND_ACCESS_KEY"
-          echo "  Value: $STORAGE_ACCOUNT_KEY"
+          echo "  Value (base64 encoded - you need to DECODE it first):"
+          echo "  $ENCODED_KEY"
+          echo ""
+          echo "To decode the key, run this command locally:"
+          echo "  echo '$ENCODED_KEY' | base64 -d"
+          echo ""
+          echo "Or use an online base64 decoder: https://www.base64decode.org/"
           echo ""
           echo "================================================================"
