@@ -16,6 +16,11 @@ resource "random_pet" "name_prefix" {
   length = 1
 }
 
+resource "random_password" "n8n_runners_auth_token" {
+  length  = 32
+  special = true
+}
+
 ##############################
 # Wait for AKS to be ready (hacky pause)
 ##############################

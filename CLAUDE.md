@@ -43,12 +43,16 @@ This repository contains Terraform infrastructure-as-code to deploy n8n (workflo
    - TLS termination at ingress
    - Forced SSL redirect enabled
 
-6. **Python Task Runner** ([kubernetes-simple.tf:197-221](kubernetes-simple.tf#L197))
+6. **Python Task Runner** ([kubernetes-simple.tf:197-284](kubernetes-simple.tf#L197))
    - Native Python code execution in Code nodes (beta feature)
-   - Internal mode: task runner runs as subprocess within n8n container
-   - Allowlisted Python packages: pandas, numpy, requests, beautifulsoup4, lxml, openpyxl, pypdf, pillow, python-dateutil, pytz
+   - **External mode**: task runner runs as sidecar container (`n8nio/n8n-runners:latest`)
+   - Communication via Task Broker on port 5679 (localhost)
+   - Secured with randomly-generated auth token
+   - Pre-installed Python packages: pandas, numpy, requests, beautifulsoup4, lxml, openpyxl, pypdf, pillow, python-dateutil, pytz
    - Enhanced isolation and stability for code execution
-   - Increased memory allocation (512Mi request, 1Gi limit) to support task runners
+   - Resource allocation:
+     - n8n container: 512Mi request / 1Gi limit
+     - runner container: 256Mi request / 512Mi limit (100m CPU request / 500m CPU limit)
 
 ### File Structure
 
@@ -74,7 +78,12 @@ This repository contains Terraform infrastructure-as-code to deploy n8n (workflo
 
 5. **RBAC**: Default service account in n8n namespace has cluster-admin binding (consider restricting in production).
 
-6. **Python Task Runner**: Enabled in internal mode for native Python execution. Task runners execute user code in isolated processes within the same container, providing better security and stability without requiring separate pods.
+6. **Python Task Runner**: Deployed in **external mode** as a sidecar container. The `n8n-runner` container runs alongside the main n8n container in the same pod, providing:
+   - True process isolation for Python code execution
+   - Official `n8nio/n8n-runners` image with Python 3 pre-installed
+   - Secure localhost communication via Task Broker (port 5679)
+   - Auth token-based security between containers
+   - Automatic scaling with the n8n pod
 
 ## Common Commands
 
@@ -139,21 +148,32 @@ kubectl get clusterissuer
 kubectl get certificate -n <namespace>
 ```
 
-### Python Task Runner
+### Python Task Runner (External Mode)
 
 ```bash
-# Enable Python Task Runner (one-time via GitHub Actions)
-# Workflow: .github/workflows/enable-python-taskrunner.yml
-# Adds task runner env vars and increases memory limits
+# Deploy Python Task Runner (via GitHub Actions + Terraform)
+# Workflow: .github/workflows/apply-python-taskrunner-external.yml
+# Deploys runner as sidecar container with external mode
+
+# Check both containers in pod
+kubectl get pods -n <namespace>
+kubectl get pods -n <namespace> -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .status.containerStatuses[*]}{"\t"}{.name}{": "}{.ready}{"\n"}{end}{end}'
+
+# View n8n main container logs
+kubectl logs -n <namespace> deployment/n8n -c n8n --tail=100 --follow
+
+# View runner sidecar container logs
+kubectl logs -n <namespace> deployment/n8n -c n8n-runner --tail=100 --follow
 
 # Verify Python task runner is enabled
-kubectl describe deployment n8n -n <namespace> | grep -A 5 "N8N_RUNNERS"
+kubectl describe deployment n8n -n <namespace> | grep -A 10 "N8N_RUNNERS"
 
-# Check available Python packages
-kubectl exec -n <namespace> deployment/n8n -- python3 -c "import pandas, numpy, requests; print('All packages available')"
+# Check available Python packages (in runner container)
+kubectl exec -n <namespace> deployment/n8n -c n8n-runner -- python3 -c "import pandas, numpy, requests; print('All packages available')"
 
-# View task runner logs
-kubectl logs -n <namespace> deployment/n8n --follow
+# Check Task Broker communication
+kubectl logs -n <namespace> deployment/n8n -c n8n | grep -i "task broker"
+kubectl logs -n <namespace> deployment/n8n -c n8n-runner | grep -i "connected"
 ```
 
 **Using Python in Code Nodes:**
@@ -191,11 +211,25 @@ GitHub Actions workflow ([.github/workflows/n8n_update.yml](.github/workflows/n8
 - Updates n8n deployment to `n8nio/n8n:next` image
 - Restarts deployment and waits for rollout completion
 
-GitHub Actions workflow ([.github/workflows/enable-python-taskrunner.yml](.github/workflows/enable-python-taskrunner.yml)) - one-time manual execution:
-- Enables Python task runner with native Python support
-- Adds allowlisted Python packages
-- Increases pod memory limits (512Mi request, 1Gi limit)
-- Restarts deployment and verifies rollout
+### Python Task Runner Workflows
+
+GitHub Actions workflow ([.github/workflows/apply-python-taskrunner-external.yml](.github/workflows/apply-python-taskrunner-external.yml)) - one-time manual execution:
+- Runs `terraform apply` to deploy Python task runner in external mode
+- Adds runner sidecar container to n8n pod
+- Configures Task Broker communication between containers
+- Verifies both containers are running and connected
+- Tests Python package availability
+
+GitHub Actions workflow ([.github/workflows/rollback-python-taskrunner.yml](.github/workflows/rollback-python-taskrunner.yml)) - emergency rollback:
+- Removes Python task runner environment variables
+- Restores original memory limits (250Mi/500Mi)
+- Restarts deployment to restore previous working state
+
+GitHub Actions workflow ([.github/workflows/diagnose-n8n.yml](.github/workflows/diagnose-n8n.yml)) - troubleshooting:
+- Checks pod status and events
+- Retrieves logs from both n8n and runner containers
+- Displays resource usage and configuration
+- Helps identify issues with deployment
 
 ## Configuration Requirements
 

@@ -194,30 +194,30 @@ resource "kubernetes_deployment" "n8n_deployment" {
             name = "WEBHOOK_URL"
             value = "https://your_host"
           }
-          # Python Task Runner Configuration
+          # Python Task Runner Configuration - External Mode
           env {
             name  = "N8N_RUNNERS_ENABLED"
             value = "true"
           }
           env {
             name  = "N8N_RUNNERS_MODE"
-            value = "internal"
+            value = "external"
+          }
+          env {
+            name  = "N8N_RUNNERS_BROKER_LISTEN_ADDRESS"
+            value = "0.0.0.0"
+          }
+          env {
+            name  = "N8N_RUNNERS_BROKER_PORT"
+            value = "5679"
+          }
+          env {
+            name  = "N8N_RUNNERS_AUTH_TOKEN"
+            value = random_password.n8n_runners_auth_token.result
           }
           env {
             name  = "N8N_NATIVE_PYTHON_RUNNER"
             value = "true"
-          }
-          env {
-            name  = "N8N_RUNNERS_STDLIB_ALLOW"
-            value = "os,sys,json,re,datetime,math,time,random,hashlib,base64,collections,itertools"
-          }
-          env {
-            name  = "N8N_RUNNERS_EXTERNAL_ALLOW"
-            value = "pandas,numpy,requests,beautifulsoup4,lxml,openpyxl,pypdf,pillow,python-dateutil,pytz"
-          }
-          env {
-            name  = "NODE_FUNCTION_ALLOW_BUILTIN"
-            value = "*"
           }
 
           port {
@@ -242,6 +242,44 @@ resource "kubernetes_deployment" "n8n_deployment" {
             name       = "postgres-ca-cert"
             mount_path = "/certs"
             read_only  = true
+          }
+        }
+
+        # Python Task Runner Sidecar Container
+        container {
+          name  = "n8n-runner"
+          image = "n8nio/n8n-runners:latest"
+
+          env {
+            name  = "N8N_RUNNERS_TASK_BROKER_URI"
+            value = "http://127.0.0.1:5679"
+          }
+          env {
+            name  = "N8N_RUNNERS_AUTH_TOKEN"
+            value = random_password.n8n_runners_auth_token.result
+          }
+          env {
+            name  = "N8N_RUNNERS_MAX_CONCURRENCY"
+            value = "5"
+          }
+          env {
+            name  = "N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT"
+            value = "15"
+          }
+          env {
+            name  = "GENERIC_TIMEZONE"
+            value = "UTC"
+          }
+
+          resources {
+            requests = {
+              memory = "256Mi"
+              cpu    = "100m"
+            }
+            limits = {
+              memory = "512Mi"
+              cpu    = "500m"
+            }
           }
         }
 

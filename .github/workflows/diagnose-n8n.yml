@@ -33,10 +33,16 @@ jobs:
           kubectl get events -n n8n --sort-by='.lastTimestamp' | tail -30
           echo ""
 
-      - name: Check Pod Logs
+      - name: Check n8n Container Logs
         run: |
-          echo "==================== POD LOGS (Last 100 lines) ===================="
-          kubectl logs -n n8n deployment/n8n --tail=100 || echo "Failed to get logs - pod might not be running"
+          echo "==================== N8N CONTAINER LOGS (Last 100 lines) ===================="
+          kubectl logs -n n8n deployment/n8n -c n8n --tail=100 || echo "Failed to get n8n logs - container might not be running"
+          echo ""
+
+      - name: Check Runner Container Logs
+        run: |
+          echo "==================== RUNNER CONTAINER LOGS (Last 50 lines) ===================="
+          kubectl logs -n n8n deployment/n8n -c n8n-runner --tail=50 || echo "Runner container not found (this is normal if external mode is not yet deployed)"
           echo ""
 
       - name: Describe Pod

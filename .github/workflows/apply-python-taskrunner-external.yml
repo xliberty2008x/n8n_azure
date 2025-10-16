@@ -1,0 +1,117 @@
+name: Apply Python Task Runner - External Mode
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-apply:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set kubectl context for the AKS cluster
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Terraform Init
+        run: terraform init
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
+          TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
+          TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_administrator_login: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN }}
+          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+          TF_VAR_namespace: ${{ secrets.TF_VAR_NAMESPACE }}
+          TF_VAR_postgres_database: ${{ secrets.TF_VAR_POSTGRES_DATABASE }}
+          TF_VAR_postgres_username: ${{ secrets.TF_VAR_POSTGRES_USERNAME }}
+          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+          TF_VAR_PGHOST: ${{ secrets.TF_VAR_PGHOST }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
+          TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
+          TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_administrator_login: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN }}
+          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+          TF_VAR_namespace: ${{ secrets.TF_VAR_NAMESPACE }}
+          TF_VAR_postgres_database: ${{ secrets.TF_VAR_POSTGRES_DATABASE }}
+          TF_VAR_postgres_username: ${{ secrets.TF_VAR_POSTGRES_USERNAME }}
+          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+          TF_VAR_PGHOST: ${{ secrets.TF_VAR_PGHOST }}
+
+      - name: Wait for Deployment Rollout
+        run: |
+          echo "Waiting for n8n deployment to complete rollout..."
+          kubectl rollout status deployment/n8n -n ${{ secrets.TF_VAR_NAMESPACE }} --timeout=5m
+
+      - name: Verify Both Containers are Running
+        run: |
+          echo "==================== POD STATUS ===================="
+          kubectl get pods -n ${{ secrets.TF_VAR_NAMESPACE }} -o wide
+          echo ""
+
+          echo "==================== CONTAINER STATUS ===================="
+          kubectl get pods -n ${{ secrets.TF_VAR_NAMESPACE }} -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .status.containerStatuses[*]}{"\t"}{.name}{": "}{.ready}{"\n"}{end}{end}'
+          echo ""
+
+      - name: Check n8n Logs
+        run: |
+          echo "==================== N8N LOGS (Last 30 lines) ===================="
+          kubectl logs -n ${{ secrets.TF_VAR_NAMESPACE }} deployment/n8n -c n8n --tail=30
+          echo ""
+
+      - name: Check Runner Logs
+        run: |
+          echo "==================== RUNNER LOGS (Last 30 lines) ===================="
+          kubectl logs -n ${{ secrets.TF_VAR_NAMESPACE }} deployment/n8n -c n8n-runner --tail=30
+          echo ""
+
+      - name: Verify Service
+        run: |
+          echo "==================== SERVICE STATUS ===================="
+          kubectl get svc -n ${{ secrets.TF_VAR_NAMESPACE }}
+          echo ""
+
+          echo "✅ Python Task Runner in External Mode deployed successfully!"
+          echo ""
+          echo "Next steps:"
+          echo "1. Access your n8n instance"
+          echo "2. Create or edit a Code node"
+          echo "3. Select 'Python (Native) (Beta)' from the language dropdown"
+          echo "4. Test with Python code using packages like pandas, numpy, requests"
+          echo ""
+          echo "Available Python packages:"
+          echo "  - pandas, numpy, requests, beautifulsoup4, lxml"
+          echo "  - openpyxl, pypdf, pillow, python-dateutil, pytz"
