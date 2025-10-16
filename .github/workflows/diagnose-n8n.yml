@@ -1,0 +1,81 @@
+name: Diagnose n8n Pod Issues
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set kubectl context for the AKS cluster
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Check Pod Status
+        run: |
+          echo "==================== POD STATUS ===================="
+          kubectl get pods -n n8n -o wide
+          echo ""
+
+          echo "==================== DEPLOYMENT STATUS ===================="
+          kubectl get deployment n8n -n n8n
+          echo ""
+
+      - name: Check Pod Events
+        run: |
+          echo "==================== RECENT EVENTS ===================="
+          kubectl get events -n n8n --sort-by='.lastTimestamp' | tail -30
+          echo ""
+
+      - name: Check Pod Logs
+        run: |
+          echo "==================== POD LOGS (Last 100 lines) ===================="
+          kubectl logs -n n8n deployment/n8n --tail=100 || echo "Failed to get logs - pod might not be running"
+          echo ""
+
+      - name: Describe Pod
+        run: |
+          echo "==================== POD DESCRIPTION ===================="
+          kubectl describe pod -n n8n -l service=n8n
+          echo ""
+
+      - name: Check Service and Endpoints
+        run: |
+          echo "==================== SERVICE STATUS ===================="
+          kubectl get svc -n n8n
+          echo ""
+
+          echo "==================== ENDPOINTS ===================="
+          kubectl get endpoints -n n8n
+          echo ""
+
+      - name: Check Deployment Environment Variables
+        run: |
+          echo "==================== ENVIRONMENT VARIABLES ===================="
+          kubectl get deployment n8n -n n8n -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' | tr ' ' '\n'
+          echo ""
+
+      - name: Check Resource Limits
+        run: |
+          echo "==================== RESOURCE LIMITS ===================="
+          kubectl get deployment n8n -n n8n -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq .
+          echo ""
+
+      - name: Summary
+        run: |
+          echo "==================== DIAGNOSTIC SUMMARY ===================="
+          echo "Check the logs above to identify the issue."
+          echo ""
+          echo "Common issues to look for:"
+          echo "1. Pod status: CrashLoopBackOff, OOMKilled, ImagePullBackOff"
+          echo "2. Events: Look for error messages or warnings"
+          echo "3. Logs: Check for application errors or startup failures"
+          echo "4. Resources: Check if memory/CPU limits are being exceeded"
+          echo ""
+          echo "If you need to rollback, run the 'Rollback Python Task Runner' workflow."

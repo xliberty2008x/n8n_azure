@@ -1,0 +1,71 @@
+name: Rollback Python Task Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rollback:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set kubectl context for the AKS cluster
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Remove Python Task Runner Environment Variables
+        run: |
+          echo "Removing Python task runner environment variables..."
+          kubectl set env deployment/n8n -n n8n \
+            N8N_RUNNERS_ENABLED- \
+            N8N_RUNNERS_MODE- \
+            N8N_NATIVE_PYTHON_RUNNER- \
+            N8N_RUNNERS_STDLIB_ALLOW- \
+            N8N_RUNNERS_EXTERNAL_ALLOW- \
+            NODE_FUNCTION_ALLOW_BUILTIN-
+
+          echo "✅ Environment variables removed"
+
+      - name: Restore Original Memory Limits
+        run: |
+          echo "Restoring original memory limits (250Mi request, 500Mi limit)..."
+          kubectl set resources deployment/n8n -n n8n \
+            --requests=memory=250Mi \
+            --limits=memory=500Mi
+
+          echo "✅ Memory limits restored"
+
+      - name: Restart n8n Deployment
+        run: |
+          echo "Restarting n8n deployment..."
+          kubectl rollout restart deployment/n8n -n n8n
+
+      - name: Wait for Rollout to Complete
+        run: |
+          echo "Waiting for deployment rollout to complete..."
+          kubectl rollout status deployment/n8n -n n8n --timeout=5m
+
+      - name: Verify Deployment Status
+        run: |
+          echo "==================== POD STATUS ===================="
+          kubectl get pods -n n8n
+          echo ""
+
+          echo "==================== SERVICE STATUS ===================="
+          kubectl get svc -n n8n
+          echo ""
+
+          echo "✅ Rollback completed successfully!"
+          echo ""
+          echo "Your n8n instance should now be back to its previous working state."
+          echo "Try accessing your n8n URL to verify it's working."
+
+      - name: Check Pod Logs
+        if: always()
+        run: |
+          echo "==================== POD LOGS (for verification) ===================="
+          kubectl logs -n n8n deployment/n8n --tail=30
