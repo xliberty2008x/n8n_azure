@@ -1,10 +1,13 @@
 # Copy this file as terraform.tfvars and update the values below with your own credentials and settings.
 
 # Azure credentials configuration
-subscription_id = "<YOUR_AZURE_SUBSCRIPTION_ID_HERE>"      
-client_id       = "<YOUR_AZURE_CLIENT_ID_HERE>"           
-client_secret   = "<YOUR_AZURE_CLIENT_SECRET_HERE>"        
-tenant_id       = "<YOUR_AZURE_TENANT_ID_HERE>"            
+# subscription_id is provided via environment variable (TF_VAR_subscription_id) in GitHub Actions
+# client_id, client_secret, tenant_id are not needed when using Azure CLI authentication (ARM_USE_CLI=true)
+# Uncomment these lines for local development with service principal:
+# subscription_id = "<YOUR_AZURE_SUBSCRIPTION_ID_HERE>"
+# client_id       = "<YOUR_AZURE_CLIENT_ID_HERE>"
+# client_secret   = "<YOUR_AZURE_CLIENT_SECRET_HERE>"
+# tenant_id       = "<YOUR_AZURE_TENANT_ID_HERE>"            
 
 # PostgreSQL configuration
 administrator_login         = "<YOUR_POSTGRES_ADMIN_LOGIN_HERE>"      
