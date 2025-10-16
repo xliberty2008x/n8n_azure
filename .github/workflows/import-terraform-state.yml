@@ -83,6 +83,17 @@ jobs:
           echo ""
           echo "✅ All values extracted successfully from existing infrastructure"
 
+      - name: Create Provider Override for Import
+        run: |
+          echo "Creating provider override to prevent AKS dependency during import..."
+          cat > override.tf << 'EOF'
+          # Temporary override for import - use ONLY kubeconfig, not AKS cluster outputs
+          provider "kubernetes" {
+            config_path = "~/.kube/config"
+          }
+          EOF
+          echo "✅ Created override.tf"
+
       - name: Terraform Init with Remote Backend
         run: |
           echo "Initializing Terraform with Azure Storage backend..."
@@ -198,6 +209,11 @@ jobs:
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Remove Provider Override
+        run: |
+          rm -f override.tf
+          echo "✅ Removed override.tf"
 
       - name: Verify Terraform State
         run: |
