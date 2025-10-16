@@ -1,0 +1,66 @@
+name: Get Azure Infrastructure Info
+
+on:
+  workflow_dispatch:
+
+jobs:
+  get-info:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get PostgreSQL Server Information
+        run: |
+          echo "==================== POSTGRESQL SERVER INFO ===================="
+
+          # Get PostgreSQL server name
+          POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
+          echo "Server Name: $POSTGRES_SERVER"
+
+          # Get PostgreSQL FQDN
+          PGHOST=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query fullyQualifiedDomainName -o tsv)
+          echo "FQDN (PGHOST): $PGHOST"
+
+          # Get admin username
+          ADMIN_USER=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query administratorLogin -o tsv)
+          echo "Administrator Login: $ADMIN_USER"
+
+          # Get database list
+          echo ""
+          echo "Databases:"
+          az postgres flexible-server db list --resource-group n8n_bs --server-name $POSTGRES_SERVER --query '[].name' -o table
+
+          echo ""
+          echo "==================== KUBERNETES INFO ===================="
+
+          # Get AKS credentials
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+          # Get namespaces
+          echo "Kubernetes Namespaces:"
+          kubectl get namespaces
+
+          echo ""
+          echo "==================== REQUIRED GITHUB SECRETS ===================="
+          echo "Based on the above info, you need to set these GitHub secrets:"
+          echo ""
+          echo "1. TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD"
+          echo "   - This is the password for PostgreSQL admin user: $ADMIN_USER"
+          echo "   - If you don't know it, you need to reset it (see below)"
+          echo ""
+          echo "2. TF_VAR_POSTGRES_PASSWORD"
+          echo "   - This is the password for n8n database user"
+          echo "   - If you don't know it, you need to set it to a new value"
+          echo ""
+          echo "==================== HOW TO RESET POSTGRESQL PASSWORD ===================="
+          echo "If you don't know the admin password, run:"
+          echo "az postgres flexible-server update \\"
+          echo "  --resource-group n8n_bs \\"
+          echo "  --name $POSTGRES_SERVER \\"
+          echo "  --admin-password 'YourNewStrongPassword123!'"
+          echo ""
+          echo "Then save 'YourNewStrongPassword123!' as both secrets in GitHub."
