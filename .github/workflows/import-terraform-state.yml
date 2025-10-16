@@ -1,0 +1,195 @@
+name: Import Existing Resources to Terraform State
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-state:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set kubectl context for the AKS cluster
+        run: |
+          az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
+
+      - name: Get Infrastructure Values from Azure
+        id: azure-vars
+        run: |
+          echo "==================== EXTRACTING FROM AZURE ===================="
+
+          # Get subscription ID
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "subscription_id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
+          echo "Subscription ID extracted ✅"
+
+          # Get PostgreSQL server name and FQDN
+          POSTGRES_SERVER=$(az postgres flexible-server list --resource-group n8n_bs --query '[0].name' -o tsv)
+          PGHOST=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query fullyQualifiedDomainName -o tsv)
+          ADMIN_USER=$(az postgres flexible-server show --resource-group n8n_bs --name $POSTGRES_SERVER --query administratorLogin -o tsv)
+
+          echo "pghost=$PGHOST" >> $GITHUB_OUTPUT
+          echo "PostgreSQL Host: $PGHOST"
+          echo "PostgreSQL Admin: $ADMIN_USER"
+          echo "PostgreSQL Server: $POSTGRES_SERVER"
+
+          echo "administrator_login=$ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "postgres_username=$ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "postgres_database=n8n" >> $GITHUB_OUTPUT
+          echo "postgres_server=$POSTGRES_SERVER" >> $GITHUB_OUTPUT
+
+          echo "==================== EXTRACTING FROM N8N DEPLOYMENT ===================="
+
+          # Find n8n pod across all namespaces
+          echo "Searching for running n8n pod..."
+          POD_INFO=$(kubectl get pods --all-namespaces --field-selector status.phase=Running -o json | jq -r '.items[] | select(.metadata.name | contains("n8n")) | "\(.metadata.namespace) \(.metadata.name)"' | head -n1)
+
+          if [ -z "$POD_INFO" ]; then
+            echo "❌ ERROR: No running n8n pod found!"
+            exit 1
+          fi
+
+          NAMESPACE=$(echo "$POD_INFO" | awk '{print $1}')
+          POD_NAME=$(echo "$POD_INFO" | awk '{print $2}')
+
+          echo "Found n8n pod: $POD_NAME in namespace: $NAMESPACE"
+          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
+
+          # Extract password from running n8n container
+          echo "Extracting database password from running n8n deployment..."
+          POSTGRES_PWD=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o json | jq -r '.spec.containers[] | select(.name=="n8n") | .env[] | select(.name=="DB_POSTGRESDB_PASSWORD") | .value')
+
+          if [ -z "$POSTGRES_PWD" ]; then
+            echo "❌ ERROR: Could not extract database password from n8n pod!"
+            exit 1
+          fi
+
+          echo "postgres_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+          echo "administrator_login_password=$POSTGRES_PWD" >> $GITHUB_OUTPUT
+          echo "Database password extracted ✅"
+
+          echo ""
+          echo "✅ All values extracted successfully from existing infrastructure"
+
+      - name: Terraform Init
+        run: terraform init
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import Resource Group
+        run: |
+          echo "Importing Resource Group..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_resource_group.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import Virtual Network
+        run: |
+          echo "Importing Virtual Network..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_virtual_network.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/virtualNetworks/n8n-vnet" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import Network Security Group
+        run: |
+          echo "Importing Network Security Group..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_network_security_group.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/networkSecurityGroups/n8n-nsg" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import AKS Cluster
+        run: |
+          echo "Importing AKS Cluster..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_kubernetes_cluster.aks "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.ContainerService/managedClusters/n8nAKScluster" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import PostgreSQL Flexible Server
+        run: |
+          echo "Importing PostgreSQL Flexible Server..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_postgresql_flexible_server.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.DBforPostgreSQL/flexibleServers/${{ steps.azure-vars.outputs.postgres_server }}" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Import PostgreSQL Database
+        run: |
+          echo "Importing PostgreSQL Database..."
+          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+            azurerm_postgresql_flexible_server_database.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.DBforPostgreSQL/flexibleServers/${{ steps.azure-vars.outputs.postgres_server }}/databases/n8n" || echo "Already imported or failed"
+        env:
+          ARM_USE_CLI: true
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Verify Terraform State
+        run: |
+          echo "==================== TERRAFORM STATE ===================="
+          terraform state list
+          echo ""
+          echo "✅ Import complete! Terraform now tracks your existing infrastructure."
+          echo ""
+          echo "Next: Run 'Apply Python Task Runner - External Mode' workflow"
