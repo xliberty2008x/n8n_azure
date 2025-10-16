@@ -25,18 +25,25 @@ jobs:
         run: |
           az aks get-credentials --resource-group n8n_bs --name n8nAKScluster --overwrite-existing
 
+      - name: Get Azure Subscription ID
+        id: get-subscription
+        run: |
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "subscription_id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
+          echo "Subscription ID: $SUBSCRIPTION_ID"
+
       - name: Terraform Init
         run: terraform init
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
+          TF_VAR_subscription_id: ${{ steps.get-subscription.outputs.subscription_id }}
           TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
           TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
           TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
@@ -52,8 +59,8 @@ jobs:
         run: terraform apply -auto-approve tfplan
         env:
           ARM_USE_CLI: true
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.get-subscription.outputs.subscription_id }}
+          TF_VAR_subscription_id: ${{ steps.get-subscription.outputs.subscription_id }}
           TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
           TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
           TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
