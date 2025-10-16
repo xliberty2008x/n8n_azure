@@ -20,10 +20,12 @@ provider "kubernetes" {
 
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id
-  client_id       = var.client_id
-  client_secret   = var.client_secret
-  tenant_id       = var.tenant_id
+  # When running in GitHub Actions with ARM_USE_CLI=true, comment out explicit credentials
+  # When running locally, uncomment these lines:
+  # subscription_id = var.subscription_id
+  # client_id       = var.client_id
+  # client_secret   = var.client_secret
+  # tenant_id       = var.tenant_id
 }
 
 resource "azurerm_resource_group" "main" {
