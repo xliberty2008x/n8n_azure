@@ -8,6 +8,9 @@ jobs:
     environment: n8n_bs
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Azure Login
         uses: Azure/login@v1.4.6
         with:
