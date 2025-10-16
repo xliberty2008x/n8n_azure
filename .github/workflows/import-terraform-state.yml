@@ -83,23 +83,6 @@ jobs:
           echo ""
           echo "✅ All values extracted successfully from existing infrastructure"
 
-      - name: Backup and Patch main.tf for Import
-        run: |
-          echo "Backing up main.tf..."
-          cp main.tf main.tf.backup
-
-          echo "Patching Kubernetes provider to use kubeconfig only..."
-          # Replace lines 12-19 (Kubernetes provider block) with simple config
-          sed -i '12,19d' main.tf
-          sed -i '11a\
-          provider "kubernetes" {\
-            config_path = "~/.kube/config"\
-          }' main.tf
-
-          echo "✅ main.tf patched - Kubernetes provider now uses kubeconfig only"
-          echo "Modified provider block:"
-          sed -n '12,14p' main.tf
-
       - name: Terraform Init with Remote Backend
         run: |
           echo "Initializing Terraform with Azure Storage backend..."
@@ -215,13 +198,6 @@ jobs:
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
-
-      - name: Restore main.tf
-        run: |
-          if [ -f main.tf.backup ]; then
-            mv main.tf.backup main.tf
-            echo "✅ main.tf restored to original state"
-          fi
 
       - name: Verify Terraform State
         run: |
