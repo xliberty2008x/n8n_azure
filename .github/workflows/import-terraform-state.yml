@@ -83,6 +83,23 @@ jobs:
           echo ""
           echo "✅ All values extracted successfully from existing infrastructure"
 
+      - name: Backup and Patch main.tf for Import
+        run: |
+          echo "Backing up main.tf..."
+          cp main.tf main.tf.backup
+
+          echo "Patching Kubernetes provider to use kubeconfig only..."
+          # Replace lines 12-19 (Kubernetes provider block) with simple config
+          sed -i '12,19d' main.tf
+          sed -i '11a\
+          provider "kubernetes" {\
+            config_path = "~/.kube/config"\
+          }' main.tf
+
+          echo "✅ main.tf patched - Kubernetes provider now uses kubeconfig only"
+          echo "Modified provider block:"
+          sed -n '12,14p' main.tf
+
       - name: Terraform Init
         run: terraform init
         env:
@@ -108,15 +125,20 @@ jobs:
       - name: Import Virtual Network
         run: |
           echo "Importing Virtual Network..."
-          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
-            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
-            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
-            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
-            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
-            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
-            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
-            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
-            azurerm_virtual_network.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/virtualNetworks/n8n-vnet" || echo "Already imported or failed"
+          # Check if VNet exists first
+          if az network vnet show --resource-group n8n_bs --name n8n-network &>/dev/null; then
+            terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+              -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+              -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+              -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+              -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+              -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+              -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+              -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+              azurerm_virtual_network.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/virtualNetworks/n8n-network" || echo "Import failed"
+          else
+            echo "⚠️  VNet 'n8n-network' does not exist - will be created by Terraform"
+          fi
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
@@ -124,15 +146,20 @@ jobs:
       - name: Import Network Security Group
         run: |
           echo "Importing Network Security Group..."
-          terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
-            -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
-            -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
-            -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
-            -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
-            -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
-            -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
-            -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
-            azurerm_network_security_group.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/networkSecurityGroups/n8n-nsg" || echo "Already imported or failed"
+          # Check if NSG exists first
+          if az network nsg show --resource-group n8n_bs --name n8n-security-group &>/dev/null; then
+            terraform import -var="subscription_id=${{ steps.azure-vars.outputs.subscription_id }}" \
+              -var="namespace=${{ steps.azure-vars.outputs.namespace }}" \
+              -var="postgres_database=${{ steps.azure-vars.outputs.postgres_database }}" \
+              -var="postgres_username=${{ steps.azure-vars.outputs.postgres_username }}" \
+              -var="administrator_login=${{ steps.azure-vars.outputs.administrator_login }}" \
+              -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
+              -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
+              -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
+              azurerm_network_security_group.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.Network/networkSecurityGroups/n8n-security-group" || echo "Import failed"
+          else
+            echo "⚠️  NSG 'n8n-security-group' does not exist - will be created by Terraform"
+          fi
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
@@ -148,7 +175,7 @@ jobs:
             -var="PGHOST=${{ steps.azure-vars.outputs.pghost }}" \
             -var="administrator_login_password=${{ steps.azure-vars.outputs.administrator_login_password }}" \
             -var="postgres_password=${{ steps.azure-vars.outputs.postgres_password }}" \
-            azurerm_kubernetes_cluster.aks "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.ContainerService/managedClusters/n8nAKScluster" || echo "Already imported or failed"
+            azurerm_kubernetes_cluster.main "/subscriptions/${{ steps.azure-vars.outputs.subscription_id }}/resourceGroups/n8n_bs/providers/Microsoft.ContainerService/managedClusters/n8nAKScluster" || echo "Already imported or failed"
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
@@ -184,6 +211,13 @@ jobs:
         env:
           ARM_USE_CLI: true
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-vars.outputs.subscription_id }}
+
+      - name: Restore main.tf
+        run: |
+          if [ -f main.tf.backup ]; then
+            mv main.tf.backup main.tf
+            echo "✅ main.tf restored to original state"
+          fi
 
       - name: Verify Terraform State
         run: |

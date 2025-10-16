@@ -1,0 +1,42 @@
+name: Check Existing Azure Resources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-resources:
+    environment: n8n_bs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: Azure/login@v1.4.6
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: List All Resources in Resource Group
+        run: |
+          echo "==================== RESOURCE GROUP ===================="
+          az group show --name n8n_bs --query "{Name:name, Location:location, ID:id}" -o table || echo "Resource group n8n_bs does not exist"
+          echo ""
+
+          echo "==================== ALL RESOURCES IN n8n_bs ===================="
+          az resource list --resource-group n8n_bs --query "[].{Name:name, Type:type, ID:id}" -o table || echo "No resources found"
+          echo ""
+
+          echo "==================== VIRTUAL NETWORKS ===================="
+          az network vnet list --resource-group n8n_bs --query "[].{Name:name, ID:id}" -o table || echo "No vnets found"
+          echo ""
+
+          echo "==================== NETWORK SECURITY GROUPS ===================="
+          az network nsg list --resource-group n8n_bs --query "[].{Name:name, ID:id}" -o table || echo "No NSGs found"
+          echo ""
+
+          echo "==================== AKS CLUSTERS ===================="
+          az aks list --resource-group n8n_bs --query "[].{Name:name, ID:id}" -o table || echo "No AKS clusters found"
+          echo ""
+
+          echo "==================== POSTGRESQL SERVERS ===================="
+          az postgres flexible-server list --resource-group n8n_bs --query "[].{Name:name, ID:id}" -o table || echo "No PostgreSQL servers found"
+          echo ""
+
+          echo "This will help us understand which resources actually exist and need to be imported."
