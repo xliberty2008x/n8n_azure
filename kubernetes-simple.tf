@@ -81,8 +81,8 @@ resource "kubernetes_secret" "postgres_ssl_cert" {
     namespace = kubernetes_namespace.n8n.metadata[0].name
   }
   data = {
-    # Replace the file path with your local path to the CA PEM file.
-    "BaltimoreCyberTrustRoot.crt.pem" = base64encode(file("/Users/cyrildubovik/Python_projects/n8n/BaltimoreCyberTrustRoot.crt.pem"))
+    # Use relative path from repository root
+    "BaltimoreCyberTrustRoot.crt.pem" = base64encode(file("${path.module}/BaltimoreCyberTrustRoot.crt.pem"))
   }
   type = "Opaque"
 }
